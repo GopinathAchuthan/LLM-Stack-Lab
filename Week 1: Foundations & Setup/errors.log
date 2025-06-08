@@ -1,0 +1,12 @@
+[2025-06-07 21:59:44] ERROR in divide:
+Args: (<__main__.Demo object at 0x105ce36a0>, 10, 0)
+Kwargs: {}
+ZeroDivisionError: division by zero
+Traceback (most recent call last):
+  File "/var/folders/xr/2t3y6x3s1lxdgp5c1xqpn5hh0000gn/T/ipykernel_21663/770919667.py", line 14, in wrapper
+    result = func(*args, **kwargs)
+  File "/var/folders/xr/2t3y6x3s1lxdgp5c1xqpn5hh0000gn/T/ipykernel_21663/2826082441.py", line 11, in divide
+    return x / y
+ZeroDivisionError: division by zero
+
+--------------------------------------------------
