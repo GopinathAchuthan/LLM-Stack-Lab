@@ -1,64 +1,68 @@
 from typing import Optional
-from fastapi import FastAPI, Response, status, HTTPException
+from fastapi import Depends, FastAPI, Response, status, HTTPException
 from fastapi import Body
-from pydantic import BaseModel
-
+from . import models, schemas
+from .database import engine, get_db
+import psycopg
+import time
+from sqlalchemy.orm import Session
 
 app = FastAPI()
 
-class Post(BaseModel):
-    title: str
-    content: str
-    publish: bool = True
-    rating: Optional[int] = None
+models.Base.metadata.create_all(bind=engine)
 
-my_posts = [{
-                "title":"top place in tamilnadu",
-                "content":"Chennai, Madurai, Salam",
-                "publish": False,
-                "rating": 3,
-                "id": 1
-             },
-             {
-                "title":"top place in TN",
-                "content":"Vellore, Salam, Coimbatore",
-                "publish": True,
-                "rating": 5,
-                "id": 2
-             }]
-
-def find_post(id):
-    for p in my_posts:
-        print(p)
-        if p["id"] == id:
-            return p
 
 @app.get("/")
 async def root():
     return {"message": "Welcome to My API"}
 
+@app.get("/sqlalchemy")
+async def test_db_connection(db: Session = Depends(get_db)):
+    posts = db.query(models.Post).all()
+    return {"data": posts}
+
 @app.get("/posts")
-async def get_posts():
-    return {'data': 'This is your posts'}
+async def get_posts(db: Session = Depends(get_db)):
+    posts = db.query(models.Post).all()
+    return {'data': posts}
 
 @app.post("/posts", status_code=status.HTTP_201_CREATED)
-async def create_post(post: Post):
-    post_dict = post.dict()
-    post_dict['id'] = my_posts[-1]["id"] + 1
-    my_posts.append(post_dict)    
-    return {"data": my_posts[-1]}
+async def create_post(post: schemas.Posts, db: Session = Depends(get_db)):
+    new_post = models.Post(**post.dict())
+    db.add(new_post)
+    db.commit()
+    db.refresh(new_post)
+    return {"data": new_post}
 
 
 @app.get("/posts/{id}")
-def get_posts(id: int, response: Response):
-    post = find_post(id)
+def get_posts(id: int, db: Session = Depends(get_db)):
+    post = db.query(models.Post).filter(models.Post.id ==id).first()
     if not post:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"ID - {id} is not found")
-        # response.status_code = status.HTTP_404_NOT_FOUND
-        # return {"error msg": f"ID - {id} is not found"}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
+                            detail=f"Post {id} not found")
     return {"Post": post}
 
 @app.delete('/posts/{id}', status_code=status.HTTP_204_NO_CONTENT)
-def delete_posts(id: int):
+def delete_posts(id: int, db: Session = Depends(get_db)):
+    post = db.query(models.Post).filter(models.Post.id ==id)
+    
+    if post.first() == None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
+                            detail=f"Post with id:{id} does not exist")
+    
+    post.delete(synchronize_session=False)
+    db.commit()
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@app.put("/posts/{id}", response_model=schemas.PostResponse)
+async def update_post(id: int, post: schemas.Posts, db: Session = Depends(get_db)):
+    post_query = db.query(models.Post).filter(models.Post.id ==id)
+    if post_query.first() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
+                            detail=f"Post with id:{id} does not exist")
+    post_query.update(post.dict(), synchronize_session=False)
+    db.commit()
+    update_post = post_query.first()
+    return update_post
